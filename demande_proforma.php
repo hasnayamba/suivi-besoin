@@ -97,16 +97,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_proforma'])) {
             $emails_envoyes = 0;
             try {
                 $mail = new PHPMailer(true);
+
                 $mail->isSMTP();
-                $mail->Host       = 'smtp.office365.com'; // Ou smtp.gmail.com
+                $mail->Host       = 'smtp.office365.com';
                 $mail->SMTPAuth   = true;
-                $mail->Username   = 'votre_email@swisscontact.org'; 
-                $mail->Password   = 'VotreMotDePasse';              
+                $mail->Username   = getenv('SMTP_USER');
+                $mail->Password   = getenv('SMTP_PASS');
                 $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
                 $mail->Port       = 587;
                 $mail->CharSet    = 'UTF-8';
 
-                $mail->setFrom('votre_email@swisscontact.org', 'Logistique Swisscontact');
+                $mail->setFrom(getenv('SMTP_USER'), 'Logistique Swisscontact');
+                $mail->SMTPDebug = 2;
                 $mail->Subject = "Demande de prix - Réf: " . $besoin_id;
 
                 $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
@@ -427,4 +429,4 @@ $pre_selected_besoin = $_GET['besoin_id'] ?? '';
         });
     </script>
 </body>
-</html>
+</html>     
