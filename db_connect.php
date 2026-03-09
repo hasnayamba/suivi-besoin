@@ -1,18 +1,17 @@
 <?php
 
-define('DB_HOST', 'suivi-besoins-db.mysql.database.azure.com');
-define('DB_USER', 'adminuser@suivi-besoins-db');
-define('DB_PASS', '94649092@Hy');
-define('DB_NAME', 'besoin');
+$host = getenv("DB_HOST");
+$user = getenv("DB_USER");
+$pass = getenv("DB_PASS");
+$db   = getenv("DB_NAME");
 
 try {
 
     $pdo = new PDO(
-        "mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
-        DB_USER,
-        DB_PASS,
+        "mysql:host=$host;dbname=$db;charset=utf8mb4",
+        $user,
+        $pass,
         [
-            PDO::MYSQL_ATTR_SSL_CA => true,
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
         ]
