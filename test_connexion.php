@@ -1,5 +1,7 @@
 <?php
-require 'db_connect.php';
+include 'db_connect.php';
 
-echo "Connexion Azure MySQL réussie 🚀";
+$stmt = $pdo->query("SELECT NOW()");
+echo "Connexion OK : ";
+print_r($stmt->fetch());
 ?>
