@@ -8,23 +8,14 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['role']) !== 'logistici
     exit();
 }
 
+// --- LOGIQUE POUR LES NOTIFICATIONS ---
 $utilisateur_id = $_SESSION['user_id'];
-$utilisateur_nom = $_SESSION['user_nom'] ?? 'Logisticien';
-$utilisateur_email = $_SESSION['user_email'] ?? 'email@example.com';
-
-// --- LOGIQUE INTELLIGENTE POUR LES NOTIFICATIONS ---
 $notifications = [];
 $unread_count = 0;
 try {
-    // 1. On récupère les notifications : Non lues OU Lues il y a moins de 24h
-    $stmt_notif = $pdo->prepare("SELECT * FROM notifications 
-                                 WHERE utilisateur_id = ? 
-                                 AND (lue = 0 OR date_lecture > DATE_SUB(NOW(), INTERVAL 1 DAY)) 
-                                 ORDER BY date_creation DESC LIMIT 15");
+    $stmt_notif = $pdo->prepare("SELECT * FROM notifications WHERE utilisateur_id = ? ORDER BY date_creation DESC LIMIT 5");
     $stmt_notif->execute([$utilisateur_id]);
     $notifications = $stmt_notif->fetchAll();
-
-    // 2. Compteur : Uniquement les vraies non lues
     $stmt_count = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE utilisateur_id = ? AND lue = 0");
     $stmt_count->execute([$utilisateur_id]);
     $unread_count = $stmt_count->fetchColumn();
@@ -32,7 +23,10 @@ try {
     error_log("Erreur de notification: " . $e->getMessage());
 }
 
-// Récupération des statistiques pour les badges
+$utilisateur_nom = $_SESSION['user_nom'] ?? 'Logisticien';
+$utilisateur_email = $_SESSION['user_email'] ?? 'email@example.com';
+
+// Récupération  des statistiques pour les badges
 try {
     $stats_besoins = $pdo->query("SELECT COUNT(*) FROM besoins WHERE statut = 'Validé'")->fetchColumn();
     $stats_contrats = $pdo->query("SELECT COUNT(*) FROM contrats WHERE statut = 'Actif'")->fetchColumn();
@@ -69,7 +63,9 @@ try {
             --gradient-purple: linear-gradient(135deg, #6f42c1 0%, #d63384 100%);
         }
         
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
         
         body {
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -121,7 +117,9 @@ try {
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
         }
         
-        .module-card:hover::before { transform: scaleX(1); }
+        .module-card:hover::before {
+            transform: scaleX(1);
+        }
         
         .module-card .card-body {
             padding: 2.5rem;
@@ -142,7 +140,9 @@ try {
             transition: all 0.3s ease;
         }
         
-        .module-card:hover .module-icon { transform: scale(1.1) rotate(5deg); }
+        .module-card:hover .module-icon {
+            transform: scale(1.1) rotate(5deg);
+        }
         
         .achat .module-icon { background: var(--gradient-primary); }
         .contrat .module-icon { background: var(--gradient-success); }
@@ -163,35 +163,66 @@ try {
             margin-bottom: 1.5rem;
         }
         
+        .module-badge {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: #dc3545;
+            color: white;
+            border-radius: 50px;
+            padding: 0.3rem 0.8rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            animation: pulse 2s infinite;
+            z-index: 3;
+        }
+        
+        .module-badge.new {
+            background: var(--swiss-green);
+        }
+        
+        .module-badge.warning {
+            background: var(--swiss-orange);
+        }
+        
         /* CORRECTION Z-INDEX POUR LES DROPDOWNS */
         .notification-dropdown {
             width: 380px;
-            max-height: 400px;
-            overflow-y: auto;
             border: none;
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
             z-index: 1070 !important;
         }
         
-        .dropdown-menu { z-index: 1060 !important; }
-        .dropdown-menu.show { z-index: 1080 !important; }
+        /* Correction générale pour tous les dropdowns */
+        .dropdown-menu {
+            z-index: 1060 !important;
+        }
+        
+        .dropdown-menu.show {
+            z-index: 1080 !important;
+        }
+        
+        /* User menu spécifique */
+        .dropdown-menu.dropdown-menu-end {
+            z-index: 1070 !important;
+        }
         
         .notification-item {
             padding: 1rem;
             border-bottom: 1px solid var(--swiss-gray-light);
             transition: background-color 0.2s ease;
-            white-space: normal; /* Important pour les longs messages */
         }
         
-        .notification-item:hover { background-color: var(--swiss-gray-light); }
+        .notification-item:hover {
+            background-color: var(--swiss-gray-light);
+        }
         
         .notification-item.unread {
             background-color: rgba(0, 123, 255, 0.05);
             border-left: 4px solid var(--swiss-blue);
         }
-        .notification-item.unread .message-text { font-weight: 700; color: #000; }
-        .notification-item .message-text { color: #555; }
         
         /* User Menu */
         .user-avatar {
@@ -208,11 +239,25 @@ try {
         
         /* Animations */
         @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         
-        .fade-in-up { animation: fadeInUp 0.6s ease-out; }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .fade-in-up {
+            animation: fadeInUp 0.6s ease-out;
+        }
         
         /* Welcome Section */
         .welcome-section {
@@ -246,6 +291,91 @@ try {
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
         }
         
+        .stat-item {
+            text-align: center;
+            padding: 1rem;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.25rem;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--swiss-gray);
+            font-weight: 500;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .welcome-title {
+                font-size: 2rem;
+            }
+            
+            .module-card .card-body {
+                padding: 2rem 1.5rem;
+            }
+            
+            .module-icon {
+                width: 60px;
+                height: 60px;
+                font-size: 2rem;
+            }
+            
+            .notification-dropdown {
+                width: 300px;
+            }
+            
+            .stat-number {
+                font-size: 1.5rem;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .welcome-section {
+                padding: 2rem 0 1rem;
+            }
+            
+            .welcome-title {
+                font-size: 1.8rem;
+            }
+            
+            .stats-overview {
+                padding: 1rem;
+            }
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--swiss-blue);
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--swiss-blue-light);
+        }
+        
+        /* Loading Animation */
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
         /* Button Styles */
         .btn-module {
             border: none;
@@ -268,34 +398,46 @@ try {
             transition: left 0.5s;
         }
         
-        .btn-module:hover::before { left: 100%; }
+        .btn-module:hover::before {
+            left: 100%;
+        }
         
-        .btn-primary-module { background: var(--gradient-primary); color: white; }
-        .btn-success-module { background: var(--gradient-success); color: white; }
-        .btn-purple-module { background: var(--gradient-purple); color: white; }
+        .btn-primary-module {
+            background: var(--gradient-primary);
+            color: white;
+        }
         
-        /* Loading Animation */
-        .spinner { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .btn-success-module {
+            background: var(--gradient-success);
+            color: white;
+        }
+        
+        .btn-purple-module {
+            background: var(--gradient-purple);
+            color: white;
+        }
     </style>
 </head>
 <body>
     <div class="d-flex flex-column min-vh-100">
+        <!-- Header -->
         <header class="main-header px-4 py-3">
             <div class="d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center">
+                   
                     <div>
-                        <h2 class="h4 mb-1 fw-bold">SWISSCONTACT</h2>
+                        <h2 class="h4 mb-1 fw-bold">SWISSCONTACT </h2>
                         <p class="text-muted mb-0 small">Centre de gestion</p>
                     </div>
                 </div>
                 
                 <div class="d-flex align-items-center gap-3">
+                    <!-- Notifications -->
                     <div class="dropdown">
                         <button class="btn btn-light position-relative rounded-pill px-3" type="button" data-bs-toggle="dropdown" id="notifDropdown">
                             <i class="bi bi-bell"></i>
                             <?php if ($unread_count > 0): ?>
-                                <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
                                     <?= $unread_count ?>
                                 </span>
                             <?php endif; ?>
@@ -314,7 +456,7 @@ try {
                                             <div class="d-flex align-items-start">
                                                 <i class="bi bi-info-circle text-primary mt-1 me-2"></i>
                                                 <div class="flex-grow-1">
-                                                    <div class="small message-text"><?= htmlspecialchars($notif['message']) ?></div>
+                                                    <div class="small"><?= htmlspecialchars($notif['message']) ?></div>
                                                     <div class="small text-muted fst-italic">
                                                         <?= date('d/m/Y H:i', strtotime($notif['date_creation'])) ?>
                                                     </div>
@@ -325,11 +467,14 @@ try {
                                 <?php endforeach; ?>
                             <?php endif; ?>
                             <li class="border-top">
-                                <a class="dropdown-item text-center text-primary small fw-bold py-2" href="#">Voir toutes les notifications</a>
+                                <a class="dropdown-item text-center text-primary small fw-bold py-2" href="#">
+                                    Voir toutes les notifications
+                                </a>
                             </li>
                         </ul>
                     </div>
                     
+                    <!-- User Menu -->
                     <div class="dropdown">
                         <button class="btn btn-light d-flex align-items-center gap-2 rounded-pill px-3" type="button" data-bs-toggle="dropdown">
                             <div class="user-avatar">
@@ -344,69 +489,131 @@ try {
                                 <div class="small text-muted"><?= htmlspecialchars($utilisateur_email) ?></div>
                             </li>
                             <li><hr class="dropdown-divider my-2"></li>
-                            <li><a class="dropdown-item py-2" href="profile.php"><i class="bi bi-person me-2"></i>Mon profil</a></li>
-                            <li><a class="dropdown-item py-2" href="settings.php"><i class="bi bi-gear me-2"></i>Paramètres</a></li>
+                            <li>
+                                <a class="dropdown-item py-2" href="profile.php">
+                                    <i class="bi bi-person me-2"></i>Mon profil
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item py-2" href="settings.php">
+                                    <i class="bi bi-gear me-2"></i>Paramètres
+                                </a>
+                            </li>
                             <li><hr class="dropdown-divider my-2"></li>
-                            <li><a class="dropdown-item py-2 text-danger" href="deconnexion.php"><i class="bi bi-box-arrow-right me-2"></i>Déconnexion</a></li>
+                            <li>
+                                <a class="dropdown-item py-2 text-danger" href="deconnexion.php">
+                                    <i class="bi bi-box-arrow-right me-2"></i>Déconnexion
+                                </a>
+                            </li>
                         </ul>
                     </div>
                 </div>
             </div>
         </header>
 
+        <!-- Main Content -->
         <main class="flex-fill overflow-auto px-3">
             <div class="container">
-                <div class="welcome-section fade-in-up">
+                <!-- Welcome Section -->
+               
+                <!-- Stats Overview -->
+                <div class="stats-overview fade-in-up">
+                    <div class="row text-center">
+                       
+                       <div class="welcome-section fade-in-up">
                     <h1 class="welcome-title">Bienvenue, <?= htmlspecialchars(explode(' ', $utilisateur_nom)[0]) ?> !</h1>
                     <p class="welcome-subtitle">Gérez efficacement vos processus logistiques et approvisionnements</p>
                 </div>
   
+                        
+                    </div>
+                </div>
+
+                <!-- Modules Grid -->
                 <div class="row g-4 justify-content-center mt-2">
                     
+                    <!-- Module 1: Gestion Achat -->
                     <div class="col-xl-4 col-lg-6 col-md-8">
                         <a href="logisticien.php" class="card text-decoration-none text-dark module-card achat h-100 fade-in-up" style="animation-delay: 0.1s;">
+                           
                             <div class="card-body text-center">
-                                <div class="module-icon"><i class="bi bi-cart-check"></i></div>
+                                <div class="module-icon">
+                                    <i class="bi bi-cart-check"></i>
+                                </div>
                                 <h3 class="card-title">Gestion Achat</h3>
-                                <p class="text-muted">Gérez les demandes de besoins soumises par les services : Achats Directs, Proformas, Appels d'Offres.</p>
-                                <div class="mt-4"><span class="btn btn-module btn-primary-module px-4">Accéder <i class="bi bi-arrow-right ms-2"></i></span></div>
+                                <p class="text-muted">
+                                    Gérez les demandes de besoins soumises par les services : Achats Directs, Proformas, Appels d'Offres et suivez les approbations.
+                                </p>
+                                <div class="mt-4">
+                                    <span class="btn btn-module btn-primary-module px-4">
+                                        Accéder <i class="bi bi-arrow-right ms-2"></i>
+                                    </span>
+                                </div>
                             </div>
                         </a>
                     </div>
                     
+                    <!-- Module 2: Gestion Contrat -->
                     <div class="col-xl-4 col-lg-6 col-md-8">
                         <a href="contrat_dashboard.php" class="card text-decoration-none text-dark module-card contrat h-100 fade-in-up" style="animation-delay: 0.2s;">
+                            
                             <div class="card-body text-center">
-                                <div class="module-icon"><i class="bi bi-file-text"></i></div>
+                                <div class="module-icon">
+                                    <i class="bi bi-file-text"></i>
+                                </div>
                                 <h3 class="card-title">Gestion Contrat</h3>
-                                <p class="text-muted">Suivez les contrats-cadres, les mandats et les accords à long terme avec les fournisseurs.</p>
-                                <div class="mt-4"><span class="btn btn-module btn-success-module px-4">Accéder <i class="bi bi-arrow-right ms-2"></i></span></div>
+                                <p class="text-muted">
+                                    Suivez les contrats-cadres, les mandats et les accords à long terme avec les fournisseurs. Gérez les renouvellements et échéances.
+                                </p>
+                                <div class="mt-4">
+                                    <span class="btn btn-module btn-success-module px-4">
+                                        Accéder <i class="bi bi-arrow-right ms-2"></i>
+                                    </span>
+                                </div>
                             </div>
                         </a>
                     </div>
 
+                    <!-- Module 3: Gestion Convention -->
                     <div class="col-xl-4 col-lg-6 col-md-8">
                         <a href="convention_dashboard.php" class="card text-decoration-none text-dark module-card convention h-100 fade-in-up" style="animation-delay: 0.3s;">
+                          
                             <div class="card-body text-center">
-                                <div class="module-icon"><i class="bi bi-people"></i></div>
+                                <div class="module-icon">
+                                    <i class="bi bi-people"></i>
+                                </div>
                                 <h3 class="card-title">Gestion Convention</h3>
-                                <p class="text-muted">Gérez les conventions et les partenariats institutionnels et suivez les accords.</p>
-                                <div class="mt-4"><span class="btn btn-module btn-purple-module px-4">Accéder <i class="bi bi-arrow-right ms-2"></i></span></div>
+                                <p class="text-muted">
+                                    Gérez les conventions et les partenariats institutionnels. Suivez les accords de collaboration et les engagements partenariaux.
+                                </p>
+                                <div class="mt-4">
+                                    <span class="btn btn-module btn-purple-module px-4">
+                                        Accéder <i class="bi bi-arrow-right ms-2"></i>
+                                    </span>
+                                </div>
                             </div>
                         </a>
                     </div>
 
                 </div>
 
+                <!-- Quick Actions -->
                 <div class="row mt-5 fade-in-up" style="animation-delay: 0.4s;">
                     <div class="col-12">
                         <div class="card border-0 bg-light">
                             <div class="card-body text-center py-4">
                                 <h4 class="mb-3">Actions Rapides</h4>
                                 <div class="d-flex flex-wrap justify-content-center gap-3">
-                                    <a href="gestion_achats.php?filter=urgent" class="btn btn-outline-primary rounded-pill"><i class="bi bi-lightning me-2"></i>Besoins Urgents</a>
-                                    <a href="contrat_dashboard.php?filter=expiring" class="btn btn-outline-warning rounded-pill"><i class="bi bi-clock me-2"></i>Contrats à Renouveler</a>
-                                    <a href="convention_dashboard.php?filter=new" class="btn btn-outline-purple rounded-pill"><i class="bi bi-star me-2"></i>Nouvelles Conventions</a>
+                                    <a href="logisticien.php?filter=urgent" class="btn btn-outline-primary rounded-pill">
+                                        <i class="bi bi-lightning me-2"></i>Besoins Urgents
+                                    </a>
+                                    <a href="contrat_dashboard.php?filter=expiring" class="btn btn-outline-warning rounded-pill">
+                                        <i class="bi bi-clock me-2"></i>Contrats à Renouveler
+                                    </a>
+                                    <a href="convention_dashboard.php?filter=new" class="btn btn-outline-purple rounded-pill">
+                                        <i class="bi bi-star me-2"></i>Nouvelles Conventions
+                                    </a>
+                                    
                                 </div>
                             </div>
                         </div>
@@ -415,16 +622,20 @@ try {
             </div>
         </main>
 
+        <!-- Footer -->
         <footer class="bg-white border-top mt-5">
             <div class="container py-4">
                 <div class="row align-items-center">
                     <div class="col-md-6">
                         <p class="text-muted mb-0 small">
-                            <i class="bi bi-shield-check text-success me-1"></i>Session sécurisée • Connecté en tant que <?= htmlspecialchars($utilisateur_nom) ?>
+                            <i class="bi bi-shield-check text-success me-1"></i>
+                            Session sécurisée • Connecté en tant que <?= htmlspecialchars($utilisateur_nom) ?>
                         </p>
                     </div>
                     <div class="col-md-6 text-md-end">
-                        <p class="text-muted mb-0 small">SWISSCONTACT • © <?= date('Y') ?> • v2.2.0</p>
+                        <p class="text-muted mb-0 small">
+                            SWISSCONTACT  • © <?= date('Y') ?> • v2.2.0
+                        </p>
                     </div>
                 </div>
             </div>
@@ -433,65 +644,73 @@ try {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // --- GESTION NOTIFICATIONS INTELLIGENTE ---
-        
-        // 1. Fonction pour marquer comme lu (au clic sur le dropdown)
-        function markNotificationsRead() {
-            const badge = document.getElementById('notifBadge');
-            
-            // Appel AJAX pour mettre à jour en BDD (date_lecture = NOW)
-            fetch('marquer_notifications_lues.php', { method: 'POST' })
-            .then(response => {
-                if (response.ok) {
-                    if (badge) badge.remove(); // Enlève le point rouge
-                    
-                    // Enlève le style "non lu" (fond bleu/gras) mais garde la notif
-                    document.querySelectorAll('.notification-item.unread').forEach(item => {
-                        item.classList.remove('unread');
-                    });
-                }
-            })
-            .catch(error => console.error('Erreur:', error));
-        }
-
-        // 2. Fonction de mise à jour automatique (Polling 10s)
-        function checkForUpdates() {
-            fetch('check_notifications.php')
-            .then(response => response.json())
-            .then(data => {
-                const notifBtn = document.getElementById('notifDropdown');
-                const existingBadge = document.getElementById('notifBadge');
-
-                if (data.unread_count > 0) {
-                    if (existingBadge) {
-                        existingBadge.textContent = data.unread_count;
-                    } else if (notifBtn) {
-                        const newBadge = document.createElement('span');
-                        newBadge.id = 'notifBadge';
-                        newBadge.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger';
-                        newBadge.textContent = data.unread_count;
-                        notifBtn.appendChild(newBadge);
-                    }
-                } else {
-                    if (existingBadge) existingBadge.remove();
-                }
-            })
-            .catch(error => console.error('Erreur Polling:', error));
-        }
-
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialiser les notifications
+            // Notifications handling
             const notifDropdown = document.getElementById('notifDropdown');
             if (notifDropdown) {
-                notifDropdown.addEventListener('show.bs.dropdown', markNotificationsRead);
+                notifDropdown.addEventListener('show.bs.dropdown', function () {
+                    const unreadBadge = notifDropdown.querySelector('.badge');
+                    if (unreadBadge) {
+                        fetch('marquer_notifications_lues.php', { 
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            }
+                        })
+                        .then(response => {
+                            if (response.ok) {
+                                unreadBadge.remove();
+                                // Marquer visuellement les notifications comme lues
+                                document.querySelectorAll('.notification-item.unread').forEach(item => {
+                                    item.classList.remove('unread');
+                                });
+                            }
+                        })
+                        .catch(error => console.error('Erreur:', error));
+                    }
+                });
             }
-            setInterval(checkForUpdates, 10000); // Polling toutes les 10s
 
-            // Add smooth hover effects (Votre code existant)
+            // Auto-update notifications
+            function checkForUpdates() {
+                fetch('check_notifications.php')
+                    .then(response => response.json())
+                    .then(data => {
+                        const notifDropdown = document.getElementById('notifDropdown');
+                        if (!notifDropdown) return;
+
+                        let notifBadge = notifDropdown.querySelector('.badge');
+                        if (data.unread_count > 0) {
+                            if (notifBadge) {
+                                notifBadge.textContent = data.unread_count;
+                            } else {
+                                const newBadge = document.createElement('span');
+                                newBadge.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger';
+                                newBadge.textContent = data.unread_count;
+                                notifDropdown.appendChild(newBadge);
+                            }
+                        } else {
+                            if (notifBadge) {
+                                notifBadge.remove();
+                            }
+                        }
+                    })
+                    .catch(error => console.error('Erreur de vérification:', error));
+            }
+
+            // Vérifier les nouvelles notifications toutes les 30 secondes
+            setInterval(checkForUpdates, 30000);
+
+            // Add smooth hover effects
             const moduleCards = document.querySelectorAll('.module-card');
             moduleCards.forEach(card => {
-                card.addEventListener('mouseenter', function() { this.style.zIndex = '10'; });
-                card.addEventListener('mouseleave', function() { this.style.zIndex = '1'; });
+                card.addEventListener('mouseenter', function() {
+                    this.style.zIndex = '10';
+                });
+                
+                card.addEventListener('mouseleave', function() {
+                    this.style.zIndex = '1';
+                });
             });
 
             // Add click animation for all modules
@@ -502,6 +721,7 @@ try {
                         const originalHtml = btn.innerHTML;
                         btn.innerHTML = '<i class="bi bi-arrow-repeat spinner me-2"></i>Chargement...';
                         btn.disabled = true;
+                        
                         setTimeout(() => {
                             btn.innerHTML = originalHtml;
                             btn.disabled = false;
@@ -510,19 +730,27 @@ try {
                 });
             });
 
-            // Correction Z-Index dropdowns
-            document.querySelectorAll('.dropdown-menu').forEach(menu => { menu.style.zIndex = '1060'; });
+            // CORRECTION SUPPLÉMENTAIRE POUR Z-INDEX
+            // S'assurer que les dropdowns ont toujours le bon z-index
+            document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                menu.style.zIndex = '1060';
+            });
+
             document.addEventListener('show.bs.dropdown', function(e) {
                 const dropdownMenu = e.target.querySelector('.dropdown-menu');
-                if (dropdownMenu) { dropdownMenu.style.zIndex = '1080'; }
+                if (dropdownMenu) {
+                    dropdownMenu.style.zIndex = '1080';
+                }
             });
         });
 
-        // Parallax effect
+        // Add parallax effect on scroll
         window.addEventListener('scroll', function() {
             const scrolled = window.pageYOffset;
             const parallax = document.querySelector('.welcome-section');
-            if (parallax) { parallax.style.transform = `translateY(${scrolled * 0.1}px)`; }
+            if (parallax) {
+                parallax.style.transform = `translateY(${scrolled * 0.1}px)`;
+            }
         });
     </script>
 </body>
