@@ -38,29 +38,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo "</pre>";
         exit;
 
-        if ($user && password_verify($password, $user['mot_de_passe'])) {
-            // Stocker les informations de l'utilisateur dans la session
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['user_nom'] = $user['nom'];
-            $_SESSION['user_email'] = $user['email'];
-            $_SESSION['role'] = $user['role'];
+        if ($user) {
 
-            // MODIFICATION ICI : Redirection vers le nouveau portail
-            if (strtolower($user['role']) === 'logisticien') {
-                header('Location: accueil_logisticien.php');
-                exit;
-            } elseif (strtolower($user['role']) === 'comptable') {
-                header('Location: comptable_dashboard.php');
-                exit;
-            } elseif (strtolower($user['role']) === 'finance') {
-                header('Location: finance_dashboard.php');
-                exit;
-            } else {
-                // Pour tous les autres rôles ('chef de projet', 'moi', etc.)
-                header('Location: chef_projet.php');
-                exit;
-            }
-        } else {
+    echo "<pre>";
+    echo "Mot de passe saisi : ";
+    var_dump($password);
+
+    echo "Hash en base : ";
+    var_dump($user['mot_de_passe']);
+
+    echo "password_verify : ";
+    var_dump(password_verify($password, $user['mot_de_passe']));
+    echo "</pre>";
+
+    exit;
+} else {
             $error = "Email ou mot de passe incorrect.";
         }
     } else {
