@@ -27,47 +27,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $error = '';
 
-    if (!empty($email) && !empty($password)) {
-        $sql = "SELECT * FROM utilisateurs WHERE email = :email LIMIT 1";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([':email' => $email]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!empty($email) && !empty($password)) {
 
+    $sql = "SELECT * FROM utilisateurs WHERE email = :email LIMIT 1";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':email' => $email]);
 
-        if ($user) {
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$stmt->execute([':email' => $email]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($user && password_verify($password, $user['mot_de_passe'])) {
 
-echo "<pre>";
+        session_regenerate_id(true);
 
-echo "Utilisateur trouvé : ";
-var_dump($user !== false);
+        $_SESSION['user_id'] = $user['id'];
 
-echo "<br><br>";
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['user_nom'] = $user['nom'];
+        $_SESSION['user_email'] = $user['email'];
+        $_SESSION['role'] = $user['role'];
 
-echo "Mot de passe saisi : ";
-var_dump($password);
+        switch (strtolower($user['role'])) {
 
-echo "<br><br>";
+            case 'logisticien':
+                header('Location: accueil_logisticien.php');
+                exit;
 
-echo "Hash en base : ";
-var_dump($user['mot_de_passe']);
+            case 'comptable':
+                header('Location: comptable_dashboard.php');
+                exit;
 
-echo "<br><br>";
+            case 'finance':
+                header('Location: finance_dashboard.php');
+                exit;
 
-echo "password_verify : ";
-var_dump(password_verify($password, $user['mot_de_passe']));
-
-echo "</pre>";
-
-exit;
-} else {
-            $error = "Email ou mot de passe incorrect.";
+            default:
+                header('Location: chef_projet.php');
+                exit;
         }
+
     } else {
-        $error = "Veuillez remplir tous les champs.";
+        $error = "Email ou mot de passe incorrect.";
     }
+
+} else {
+    $error = "Veuillez remplir tous les champs.";
+}
 }
 ?>
 <!DOCTYPE html>
