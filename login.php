@@ -33,25 +33,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([':email' => $email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        echo "<pre>";
-        var_dump($user);
-        echo "</pre>";
-        exit;
 
         if ($user) {
 
-    echo "<pre>";
-    echo "Mot de passe saisi : ";
-    var_dump($password);
+$stmt->execute([':email' => $email]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    echo "Hash en base : ";
-    var_dump($user['mot_de_passe']);
+echo "<pre>";
 
-    echo "password_verify : ";
-    var_dump(password_verify($password, $user['mot_de_passe']));
-    echo "</pre>";
+echo "Utilisateur trouvé : ";
+var_dump($user !== false);
 
-    exit;
+echo "<br><br>";
+
+echo "Mot de passe saisi : ";
+var_dump($password);
+
+echo "<br><br>";
+
+echo "Hash en base : ";
+var_dump($user['mot_de_passe']);
+
+echo "<br><br>";
+
+echo "password_verify : ";
+var_dump(password_verify($password, $user['mot_de_passe']));
+
+echo "</pre>";
+
+exit;
 } else {
             $error = "Email ou mot de passe incorrect.";
         }
