@@ -33,6 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([':email' => $email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        echo "<pre>";
+        var_dump($user);
+        echo "</pre>";
+        exit;
+
         if ($user && password_verify($password, $user['mot_de_passe'])) {
             // Stocker les informations de l'utilisateur dans la session
             $_SESSION['user_id'] = $user['id'];
