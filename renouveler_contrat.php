@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
         
         // Redirection vers la fiche du contrat pour voir le beau résultat
-        header('Location: voir_contrat.php?id=' . $id . '&success=renouvelé');
+        header('Location: detail_contrat.php?id=' . $id . '&success=renouvelé');
         exit();
     } catch (PDOException $e) {
         $erreur = "Erreur lors du renouvellement : " . $e->getMessage();

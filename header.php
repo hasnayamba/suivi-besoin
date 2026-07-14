@@ -9,9 +9,12 @@ $aoPages = ['appel_offre.php', 'suivi_ao.php', 'depouillement_ao.php']; // NOUVE
 $marchesPages = ['marches.php', 'gerer_marche.php'];
 ?>
 <nav class="sidebar bg-white border-end" style="width: 260px;">
-    <div class="p-4 border-bottom"><h5 class="mb-1">SWISSCONTACT</h5>
-    <small class="opacity-75">Suivie Achat</small>
-</div>
+    <div class="p-4 border-bottom">
+        <div class="mb-1">
+            <img src="logo.png" alt="Swisscontact" style="height: 28px; width: auto; object-fit: contain;">
+        </div>
+        
+    </div>
     <div class="p-3">
         <ul class="nav nav-pills flex-column">
             <li class="nav-item mb-1">
@@ -32,7 +35,6 @@ $marchesPages = ['marches.php', 'gerer_marche.php'];
                         <i class="bi bi-box me-2"></i>Demandes proforma
                     </a>
                 </li>
-                <!-- NOUVEAU LIEN AJOUTÉ CI-DESSOUS -->
                 <li class="nav-item mb-1">
                     <a class="nav-link d-flex align-items-center <?= in_array($currentPage, $aoPages) ? 'active' : '' ?>" href="suivi_ao.php">
                         <i class="bi bi-megaphone me-2"></i>Appels d'offres

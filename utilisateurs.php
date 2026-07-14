@@ -141,13 +141,14 @@ $utilisateurs = $stmt->fetchAll();
 
 $liste_antennes = ['Niamey', 'Maradi', 'Zinder', 'Tahoua', 'Agadez', 'Dosso', 'Diffa', 'Tillabéri', 'Siège / Autre'];
 
-// MISE À JOUR : Le rôle Demandeur devient Administration
+// MISE À JOUR : Ajout du rôle DP
 $liste_roles = [
     'Administration' => 'Administration (Initiateur)',
     'Logisticien' => 'Logistique',
     'Comptable' => 'Comptabilité',
     'Finance' => 'Finance',
-    'Admin' => 'Administrateur' // Conservé uniquement pour affichage
+    'DP' => 'Directeur Pays (DP)', // <--- LE NOUVEAU RÔLE EST ICI
+    'Admin' => 'Administrateur' 
 ];
 ?>
 
@@ -179,6 +180,13 @@ $liste_roles = [
             <div class="p-3">
                 <ul class="nav nav-pills flex-column">
                     <li class="nav-item"><a class="nav-link" href="admin_dashboard.php"><i class="bi bi-speedometer2 me-3"></i>Tableau de bord</a></li>
+                    
+                    <li class="nav-item mt-2">
+                        <a class="nav-link text-primary bg-primary bg-opacity-10 fw-bold" href="super_admin_dashboard.php">
+                            <i class="bi bi-eye-fill me-3"></i>Tour de Contrôle (Vue DP)
+                        </a>
+                    </li>
+                    
                     <li class="nav-item mt-3 mb-1 text-muted small text-uppercase fw-bold px-3">Gestion</li>
                     <li class="nav-item"><a class="nav-link active" href="utilisateurs.php"><i class="bi bi-people me-3"></i>Utilisateurs</a></li>
                     <li class="nav-item"><a class="nav-link" href="fournisseurs.php"><i class="bi bi-truck me-3"></i>Fournisseurs</a></li>
@@ -267,6 +275,7 @@ $liste_roles = [
                                                 elseif ($r == 'logisticien') $badge = 'bg-primary';
                                                 elseif ($r == 'comptable' || $r == 'finance') $badge = 'bg-success';
                                                 elseif ($r == 'administration') $badge = 'bg-info text-dark';
+                                                elseif ($r == 'dp') $badge = 'bg-warning text-dark border border-warning'; // BADGE DP
                                             ?>
                                             <span class="badge <?= $badge ?>"><?= htmlspecialchars($user['role']) ?></span>
                                         </td>
@@ -448,7 +457,6 @@ $liste_roles = [
             
             let roleSelect = document.getElementById('edit_role');
             for(let i=0; i<roleSelect.options.length; i++) {
-                // Désactiver l'option Admin si l'utilisateur n'est pas déjà un Admin
                 if (roleSelect.options[i].value === 'Admin') {
                     roleSelect.options[i].disabled = (role !== 'Admin');
                 }

@@ -8,21 +8,25 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['role']) !== 'logistici
     exit();
 }
 
+// --- RÉCUPÉRATION DES PROJETS POUR LA LISTE DES MANDATS ---
+try {
+    $stmt_projets = $pdo->query("SELECT id, nom FROM projets ORDER BY nom ASC");
+    $projets = $stmt_projets->fetchAll();
+} catch (PDOException $e) {
+    $projets = [];
+}
+
 // Fonction d'upload sécurisée
 function uploadFile($file, $prefix) {
     if (isset($file) && $file['error'] === UPLOAD_ERR_OK) {
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         $allowed = ['pdf', 'doc', 'docx', 'jpg', 'png'];
         if (in_array($ext, $allowed)) {
-            // Nom unique : PREFIXE_TIMESTAMP_RANDOM.ext
             $newName = $prefix . '_' . time() . '_' . rand(100,999) . '.' . $ext;
             $dest = __DIR__ . '/uploads/' . $newName;
-            
-            // Créer le dossier s'il n'existe pas
             if (!is_dir(__DIR__ . '/uploads/')) {
                 mkdir(__DIR__ . '/uploads/', 0755, true);
             }
-
             if (move_uploaded_file($file['tmp_name'], $dest)) {
                 return $newName;
             }
@@ -34,17 +38,29 @@ function uploadFile($file, $prefix) {
 // --- TRAITEMENT DU FORMULAIRE ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_contrat'])) {
     
-    // Validation du fichier obligatoire
     if (empty($_FILES['fichier_contrat']['name'])) {
         $_SESSION['error'] = "Le fichier du contrat est obligatoire.";
     } else {
         try {
-            // Upload des fichiers
             $fichier_contrat = uploadFile($_FILES['fichier_contrat'], 'CONTRAT');
             $fichier_avenant = uploadFile($_FILES['fichier_avenant'], 'AVENANT');
 
             if (!$fichier_contrat) {
-                throw new Exception("Erreur lors du téléchargement du contrat (Format non supporté ou erreur serveur).");
+                throw new Exception("Erreur lors du téléchargement du contrat.");
+            }
+
+            // Gestion dynamique du Type de Contrat (Si "Autre" est choisi)
+            $type_final = $_POST['type_contrat'];
+            if ($type_final === 'Autre' && !empty($_POST['nouveau_type'])) {
+                $type_final = trim($_POST['nouveau_type']);
+            }
+
+            // Récupération de l'ID du projet depuis le nom (optionnel)
+            $num_mandat = null;
+            if (!empty($_POST['num_mandat'])) {
+                $stmt = $pdo->prepare("SELECT id FROM projets WHERE nom = ?");
+                $stmt->execute([$_POST['num_mandat']]);
+                $num_mandat = $stmt->fetchColumn();
             }
 
             $sql = "INSERT INTO contrats (
@@ -63,23 +79,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_contrat'])) {
             
             $stmt = $pdo->prepare($sql);
             
-            // Fonction pour transformer une chaîne vide en NULL
-            $emptyToNull = function($value) {
-                return $value === '' ? null : $value;
-            };
+            $emptyToNull = function($value) { return $value === '' ? null : $value; };
 
             $stmt->execute([
-                ':num_mandat' => $emptyToNull($_POST['num_mandat']),
+                ':num_mandat' => $num_mandat,
                 ':antenne' => $emptyToNull($_POST['antenne']),
                 ':mode_selection' => $emptyToNull($_POST['mode_selection']),
-                ':nom_fournisseur' => $_POST['nom_fournisseur'], // Obligatoire
+                ':nom_fournisseur' => $_POST['nom_fournisseur'],
                 ':representant_legal' => $emptyToNull($_POST['representant_legal']),
-                ':type_contrat' => $emptyToNull($_POST['type_contrat']),
+                ':type_contrat' => $type_final,
                 ':num_contrat' => $emptyToNull($_POST['num_contrat']),
-                ':objet_contrat' => $_POST['objet_contrat'], // Obligatoire
+                ':objet_contrat' => $_POST['objet_contrat'],
                 ':montant_max_annuel' => $emptyToNull($_POST['montant_max_annuel']),
                 ':montant_ht' => $emptyToNull($_POST['montant_ht']),
-                ':paiement_effectue' => $emptyToNull($_POST['paiement_effectue']), // Nouveau champ
+                ':paiement_effectue' => $emptyToNull($_POST['paiement_effectue']),
                 ':date_debut' => $emptyToNull($_POST['date_debut']),
                 ':date_fin_prevue' => $emptyToNull($_POST['date_fin_prevue']),
                 ':duree_previsionnelle' => $emptyToNull($_POST['duree_previsionnelle']),
@@ -91,24 +104,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_contrat'])) {
                 ':date_fin_effective' => $emptyToNull($_POST['date_fin_effective']),
                 ':modalites_paiement' => $emptyToNull($_POST['modalites_paiement']),
                 ':observations' => $emptyToNull($_POST['observations']),
-                ':fichier_contrat' => $fichier_contrat, // Nouveau champ
-                ':fichier_avenant' => $fichier_avenant  // Nouveau champ
+                ':fichier_contrat' => $fichier_contrat,
+                ':fichier_avenant' => $fichier_avenant
             ]);
             
-            $_SESSION['success'] = "Le contrat pour " . htmlspecialchars($_POST['nom_fournisseur']) . " a été créé avec succès.";
+            // Log de l'activité
+            if(function_exists('enregistrer_log')) {
+                enregistrer_log($pdo, $_SESSION['user_id'], 'Contrats', 'Création', "Contrat créé pour " . $_POST['nom_fournisseur']);
+            }
+
+            $_SESSION['success'] = "Le contrat a été enregistré avec succès.";
             header('Location: contrat_dashboard.php');
             exit();
             
-        } catch (Exception $e) { // Capture Exception générale pour attraper aussi l'erreur d'upload
+        } catch (PDOException $e) {
+            // Afficher l'erreur détaillée en mode debug
+            $_SESSION['error'] = "Erreur SQL : " . $e->getMessage();
+            // Redirection pour afficher l'erreur
+            header('Location: ajouter_contrat.php');
+            exit();
+        } catch (Exception $e) {
             $_SESSION['error'] = "Erreur : " . $e->getMessage();
+            header('Location: ajouter_contrat.php');
+            exit();
         }
     }
-    
     header('Location: ajouter_contrat.php');
     exit();
 }
-
 ?>
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -126,94 +151,158 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_contrat'])) {
     <div class="flex-fill d-flex flex-column main-content">
         <header class="bg-white border-bottom px-4 py-3">
              <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="mb-1">Ajouter un Nouveau Contrat</h2>
-                    <p class="text-muted mb-0 small">Remplir les informations du contrat-cadre ou mandat</p>
+                <div class="d-flex align-items-center">
+                    <div>
+                        <h2 class="mb-0 h4 fw-bold text-primary">Nouveau Contrat</h2>
+                        <p class="text-muted mb-0 small">Saisie des contrats-cadres et mandats</p>
+                    </div>
                 </div>
             </div>
         </header>
 
         <main class="flex-fill overflow-auto p-4">
             
-            <?php if (isset($_SESSION['success'])): ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert"><?= $_SESSION['success']; unset($_SESSION['success']); ?></div>
-            <?php endif; ?>
             <?php if (isset($_SESSION['error'])): ?>
-            <div class="alert alert-danger alert-dismissible fade show" role="alert"><?= $_SESSION['error']; unset($_SESSION['error']); ?></div>
+                <div class="alert alert-danger alert-dismissible fade show"><?= htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?></div>
+            <?php endif; ?>
+            <?php if (isset($_SESSION['success'])): ?>
+                <div class="alert alert-success alert-dismissible fade show"><?= htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?></div>
             <?php endif; ?>
 
-            <div class="card">
+            <div class="card shadow-sm border-0" style="border-radius: 12px;">
                 <div class="card-body p-4">
                     <form action="ajouter_contrat.php" method="POST" enctype="multipart/form-data">
                         
-                        <h5 class="text-primary">Informations Générales</h5>
-                        <hr class="mt-2">
+                        <h5 class="text-primary fw-bold"><i class="bi bi-info-circle me-2"></i>Informations Générales</h5>
+                        <hr class="mt-2 mb-4">
                         <div class="row">
-                            <div class="col-md-3 mb-3"><label class="form-label">Mandat</label><input type="text" class="form-control" name="num_mandat"></div>
-                            <div class="col-md-3 mb-3"><label class="form-label">Antenne</label><input type="text" class="form-control" name="antenne"></div>
-                            <div class="col-md-3 mb-3"><label class="form-label">N° de contrat</label><input type="text" class="form-control" name="num_contrat"></div>
-                            <div class="col-md-3 mb-3"><label class="form-label">Type de contrat</label><input type="text" class="form-control" name="type_contrat"></div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Mandat / Projet</label>
+                                <select class="form-select" name="num_mandat">
+                                    <option value="" selected disabled>Choisir un projet...</option>
+                                    <?php foreach ($projets as $p): ?>
+                                        <option value="<?= htmlspecialchars($p['nom']) ?>"><?= htmlspecialchars($p['nom']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Antenne (Région)</label>
+                                <select class="form-select" name="antenne">
+                                    <option value="" selected disabled>Choisir une région...</option>
+                                    <option value="Agadez">Agadez</option>
+                                    <option value="Diffa">Diffa</option>
+                                    <option value="Dosso">Dosso</option>
+                                    <option value="Maradi">Maradi</option>
+                                    <option value="Niamey">Niamey</option>
+                                    <option value="Tahoua">Tahoua</option>
+                                    <option value="Tillabéri">Tillabéri</option>
+                                    <option value="Zinder">Zinder</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">N° de contrat</label>
+                                <input type="text" class="form-control" name="num_contrat" placeholder="Ex: SC-2026-001">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Type de contrat</label>
+                                <select class="form-select" name="type_contrat" id="select_type_contrat" onchange="toggleNouveauType()">
+                                    <option value="" selected disabled>Choisir un type...</option>
+                                    <option value="Contrat-cadre">Contrat-cadre</option>
+                                    <option value="Prestation de services">Prestation de services</option>
+                                    <option value="Travaux">Travaux</option>
+                                    <option value="Autre">-- Autre (Saisir) --</option>
+                                </select>
+                                <div id="div_nouveau_type" class="mt-2" style="display: none;">
+                                    <input type="text" class="form-control border-primary" name="nouveau_type" placeholder="Précisez le type...">
+                                </div>
+                            </div>
                         </div>
+
                         <div class="mb-3">
-                            <label class="form-label">Objet du contrat <span class="text-danger">*</span></label>
-                            <textarea class="form-control" name="objet_contrat" rows="3" required></textarea>
+                            <label class="form-label fw-bold">Objet du contrat <span class="text-danger">*</span></label>
+                            <textarea class="form-control" name="objet_contrat" rows="2" required placeholder="Description détaillée du contrat..."></textarea>
                         </div>
 
-                        <h5 class="text-primary mt-4">Fournisseur & Sélection</h5>
-                        <hr class="mt-2">
+                        <h5 class="text-primary fw-bold mt-4"><i class="bi bi-person-badge me-2"></i>Fournisseur & Finances</h5>
+                        <hr class="mt-2 mb-4">
                         <div class="row">
-                            <div class="col-md-4 mb-3"><label class="form-label">Nom du Fournisseur/Prestataire <span class="text-danger">*</span></label><input type="text" class="form-control" name="nom_fournisseur" required></div>
-                            <div class="col-md-4 mb-3"><label class="form-label">Représentant légal</label><input type="text" class="form-control" name="representant_legal"></div>
-                            <div class="col-md-4 mb-3"><label class="form-label">Mode de sélection</label><input type="text" class="form-control" name="mode_selection"></div>
-                        </div>
-
-                        <h5 class="text-primary mt-4">Finances</h5>
-                        <hr class="mt-2">
-                        <div class="row">
-                            <div class="col-md-4 mb-3"><label class="form-label">Montant Contrat (TTC/Cadre)</label><input type="number" class="form-control" name="montant_ht" placeholder="en cfa"></div>
-                            <div class="col-md-4 mb-3"><label class="form-label">Montant Max Annuel (TTC)</label><input type="number" class="form-control" name="montant_max_annuel" placeholder="en cfa"></div>
-                            <div class="col-md-4 mb-3"><label class="form-label fw-bold">Paiement Effectué</label><input type="number" class="form-control border-success" name="paiement_effectue" placeholder="en cfa" value="0"></div>
-                        </div>
-                        
-                        <h5 class="text-primary mt-4">Durée & Statut</h5>
-                        <hr class="mt-2">
-                        <div class="row">
-                            <div class="col-md-4 mb-3"><label class="form-label">Début ou date de signature</label><input type="date" class="form-control" id="date_debut" name="date_debut"></div>
-                            <div class="col-md-4 mb-3"><label class="form-label">Fin du contrat (prévue)</label><input type="date" class="form-control" id="date_fin_prevue" name="date_fin_prevue"></div>
-                            <div class="col-md-4 mb-3"><label class="form-label">Durée (prévisionnelle)</label><input type="text" class="form-control" id="duree_previsionnelle" name="duree_previsionnelle" readonly></div>
-                        </div>
-                         <div class="row">
-                             <div class="col-md-4 mb-3"><label class="form-label">Statut</label><select class="form-select" name="statut"><option value="En cours" selected>En cours</option><option value="Expiré">Expiré</option><option value="Cloturé">Cloturé</option></select></div>
-                             <div class="col-md-4 mb-3"><label class="form-label">Date de fin contrat (effective)</label><input type="date" class="form-control" name="date_fin_effective"></div>
-                        </div>
-                        
-                        <h5 class="text-primary mt-4">Avenant & Reconduction</h5>
-                        <hr class="mt-2">
-                         <div class="row">
-                            <div class="col-md-3 mb-3"><label class="form-label">Si reconduction (tacite)...</label><input type="text" class="form-control" name="reconduction_tacite" placeholder="Oui/Non, mode et préavis..."></div>
-                            <div class="col-md-3 mb-3"><label class="form-label">Avenant et changement</label><input type="text" class="form-control" name="avenant_changement"></div>
-                            <div class="col-md-3 mb-3"><label class="form-label">Date de l'avenant</label><input type="date" class="form-control" name="date_avenant"></div>
-                            <div class="col-md-3 mb-3"><label class="form-label">Date de fin avenant</label><input type="date" class="form-control" name="date_fin_avenant"></div>
-                        </div>
-
-                        <h5 class="text-primary mt-4">Documents & Divers</h5>
-                        <hr class="mt-2">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Fichier Contrat (PDF/DOC) <span class="text-danger">*</span></label>
-                                <input type="file" class="form-control" name="fichier_contrat" accept=".pdf,.doc,.docx" required>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Nom du Fournisseur <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="nom_fournisseur" required>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Fichier Avenant (Optionnel)</label>
-                                <input type="file" class="form-control" name="fichier_avenant" accept=".pdf,.doc,.docx">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Représentant légal</label>
+                                <input type="text" class="form-control" name="representant_legal" placeholder="Nom du représentant">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Mode de sélection</label>
+                                <input type="text" class="form-control" name="mode_selection" placeholder="Ex: Appel d'offres, Gré à gré...">
                             </div>
                         </div>
-                        <div class="mb-3"><label class="form-label">Modalités de paiement</label><textarea class="form-control" name="modalites_paiement" rows="3"></textarea></div>
-                        <div class="mb-3"><label class="form-label">Observations</label><textarea class="form-control" name="observations" rows="3"></textarea></div>
+                        <div class="row">
+                            <div class="col-md-3 mb-3"><label class="form-label">Montant HT</label><input type="number" step="any" class="form-control" name="montant_ht"></div>
+                            <div class="col-md-3 mb-3"><label class="form-label">Montant Max Annuel</label><input type="number" step="any" class="form-control" name="montant_max_annuel"></div>
+                            <div class="col-md-3 mb-3"><label class="form-label fw-bold text-success">Paiement effectué</label><input type="number" step="any" class="form-control border-success" name="paiement_effectue" value="0"></div>
+                            <div class="col-md-3 mb-3"><label class="form-label">Modalités de paiement</label><input type="text" class="form-control" name="modalites_paiement" placeholder="Ex: Virement à 30 jours"></div>
+                        </div>
+                        
+                        <h5 class="text-primary fw-bold mt-4"><i class="bi bi-calendar-event me-2"></i>Validité & Documents</h5>
+                        <hr class="mt-2 mb-4">
+                        <div class="row">
+                            <div class="col-md-3 mb-3"><label class="form-label">Date de Début</label><input type="date" class="form-control" id="date_debut" name="date_debut"></div>
+                            <div class="col-md-3 mb-3"><label class="form-label">Date de Fin Prévue</label><input type="date" class="form-control" id="date_fin_prevue" name="date_fin_prevue"></div>
+                            <div class="col-md-3 mb-3"><label class="form-label">Durée</label><input type="text" class="form-control bg-light" id="duree_previsionnelle" name="duree_previsionnelle" readonly></div>
+                            <div class="col-md-3 mb-3"><label class="form-label">Reconduction tacite</label>
+                                <select class="form-select" name="reconduction_tacite">
+                                    <option value="">Non précisé</option>
+                                    <option value="Oui">Oui</option>
+                                    <option value="Non">Non</option>
+                                </select>
+                            </div>
+                        </div>
 
-                        <div class="text-end mt-4">
-                            <a href="contrat_dashboard.php" class="btn btn-secondary">Annuler</a>
-                            <button type="submit" name="submit_contrat" class="btn btn-primary">Enregistrer le contrat</button>
+                        <div class="row">
+                            <div class="col-md-4 mb-3"><label class="form-label">Avenant / Changement</label><input type="text" class="form-control" name="avenant_changement" placeholder="Description"></div>
+                            <div class="col-md-4 mb-3"><label class="form-label">Date avenant</label><input type="date" class="form-control" name="date_avenant"></div>
+                            <div class="col-md-4 mb-3"><label class="form-label">Date fin avenant</label><input type="date" class="form-control" name="date_fin_avenant"></div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">Scan du Contrat (Signé) <span class="text-danger">*</span></label>
+                                <input type="file" class="form-control shadow-sm" name="fichier_contrat" accept=".pdf,.doc,.docx" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Avenant (optionnel)</label>
+                                <input type="file" class="form-control shadow-sm" name="fichier_avenant" accept=".pdf,.doc,.docx">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Statut Actuel</label>
+                                <select class="form-select" name="statut">
+                                    <option value="En cours" selected>En cours</option>
+                                    <option value="Expiré">Expiré</option>
+                                    <option value="Clôturé">Clôturé</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Date de fin effective</label>
+                                <input type="date" class="form-control" name="date_fin_effective" placeholder="Si clôturé">
+                            </div>
+                        </div>
+
+                        <div class="mb-3 mt-3">
+                            <label class="form-label">Observations / Notes particulières</label>
+                            <textarea class="form-control" name="observations" rows="2"></textarea>
+                        </div>
+
+                        <div class="text-end mt-5">
+                            <a href="contrat_dashboard.php" class="btn btn-light border px-4 me-2">Annuler</a>
+                            <button type="submit" name="submit_contrat" class="btn btn-primary px-5 fw-bold shadow">
+                                <i class="bi bi-check-lg me-2"></i>Enregistrer le Contrat
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -222,9 +311,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_contrat'])) {
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // SCRIPT POUR LE CALCUL AUTOMATIQUE DE LA DURÉE
+    // Gestion du type de contrat "Autre"
+    function toggleNouveauType() {
+        const select = document.getElementById('select_type_contrat');
+        const divNouveau = document.getElementById('div_nouveau_type');
+        if (select.value === 'Autre') {
+            divNouveau.style.display = 'block';
+            divNouveau.querySelector('input').setAttribute('required', 'required');
+        } else {
+            divNouveau.style.display = 'none';
+            divNouveau.querySelector('input').removeAttribute('required');
+        }
+    }
+
+    // Calcul automatique de la durée
     document.addEventListener('DOMContentLoaded', function() {
         const dateDebutInput = document.getElementById('date_debut');
         const dateFinInput = document.getElementById('date_fin_prevue');
@@ -235,26 +336,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_contrat'])) {
             const dateFin = new Date(dateFinInput.value);
 
             if (dateDebutInput.value && dateFinInput.value && dateFin > dateDebut) {
-                let years = dateFin.getFullYear() - dateDebut.getFullYear();
-                let months = dateFin.getMonth() - dateDebut.getMonth();
-                let days = dateFin.getDate() - dateDebut.getDate();
+                let months = (dateFin.getFullYear() - dateDebut.getFullYear()) * 12 + (dateFin.getMonth() - dateDebut.getMonth());
+                let years = Math.floor(months / 12);
+                let remainingMonths = months % 12;
 
-                if (days < 0) {
-                    months--;
-                    const dernierJourMoisPrecedent = new Date(dateFin.getFullYear(), dateFin.getMonth(), 0).getDate();
-                    days += dernierJourMoisPrecedent;
-                }
-                if (months < 0) {
-                    years--;
-                    months += 12;
-                }
-
-                let dureeTexte = "";
-                if (years > 0) dureeTexte += years + (years > 1 ? " ans " : " an ");
-                if (months > 0) dureeTexte += months + " mois ";
-                if (days > 0) dureeTexte += days + (days > 1 ? " jours" : " jour");
-                
-                dureeInput.value = dureeTexte.trim() || "0 jours";
+                let text = "";
+                if (years > 0) text += years + (years > 1 ? " ans " : " an ");
+                if (remainingMonths > 0) text += remainingMonths + " mois";
+                dureeInput.value = text.trim() || "Moins d'un mois";
             } else {
                 dureeInput.value = "";
             }
@@ -263,5 +352,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_contrat'])) {
         dateFinInput.addEventListener('change', calculerDuree);
     });
 </script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

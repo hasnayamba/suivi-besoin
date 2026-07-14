@@ -1,5 +1,5 @@
 <?php
-// ATTENTION : Pas besoin de session logisticien ici, c'est une page PUBLIQUE pour les fournisseurs.
+ 
 include 'db_connect.php';
 
 $token = $_GET['token'] ?? null;
@@ -44,8 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$deja_soumis) {
         // Upload de la proforma
         $ext = strtolower(pathinfo($_FILES['fichier_proforma']['name'], PATHINFO_EXTENSION));
         if (in_array($ext, ['pdf', 'jpg', 'png', 'jpeg'])) {
-            $uploadFileDir = __DIR__ . '/uploads/';
-            if (!is_dir($uploadFileDir)) mkdir($uploadFileDir, 0755, true);
+            
+            // MODIFICATION ICI : On utilise le sous-dossier
+            $uploadFileDir = __DIR__ . '/uploads/offres_fournisseurs/';
+            if (!is_dir($uploadFileDir)) mkdir($uploadFileDir, 0777, true);
             
             $clean_fournisseur = preg_replace('/[^A-Za-z0-9\-]/', '_', $lien_info['fournisseur_nom']);
             $newFileName = 'PROFORMA_' . $lien_info['proforma_id'] . '_' . $clean_fournisseur . '_' . time() . '.' . $ext;

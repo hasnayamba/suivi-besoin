@@ -8,18 +8,20 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['role']) !== 'logistici
     exit();
 }
 
-// On récupère maintenant les données via POST depuis la modale
 $reponse_id = $_POST['reponse_id'] ?? null;
 $demande_id = $_POST['demande_id'] ?? null;
 
 if (!$reponse_id || !$demande_id || !isset($_FILES['fichier_pv']) || $_FILES['fichier_pv']['error'] !== UPLOAD_ERR_OK) {
     $_SESSION['error'] = "Informations manquantes ou erreur de fichier pour la validation.";
-    // Rediriger vers la page précédente si possible, sinon vers la liste principale
     $redirect_url = $demande_id ? "gerer_reponses.php?id=$demande_id" : "demande_proforma.php";
     header("Location: $redirect_url");
     exit();
 }
 
+// -------------------------------------------------------------------------
+// OPTIMISATION : On génère le numéro de marché AVANT pour nommer le fichier
+// -------------------------------------------------------------------------
+$marche_id = 'M' . date('Ymd') . strtoupper(substr(uniqid(), 7, 6));
 
 // --- GESTION DU FICHIER PV ---
 $fichier_pv_nom = null;
@@ -27,10 +29,12 @@ $fileTmpPath = $_FILES['fichier_pv']['tmp_name'];
 $fileName = basename($_FILES['fichier_pv']['name']);
 $fileExtension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
 
+// On garde le dossier uploads général (comme pour vos autres documents de commande)
 $uploadFileDir = __DIR__ . '/uploads/';
 if (!is_dir($uploadFileDir)) mkdir($uploadFileDir, 0755, true);
 
-$newFileName = 'PV_' . time() . '.' . $fileExtension;
+// NOUVEAU NOM : Le nom du fichier inclut maintenant l'ID du marché !
+$newFileName = 'PV_' . $marche_id . '_' . time() . '.' . $fileExtension;
 $destPath = $uploadFileDir . $newFileName;
 
 if (!move_uploaded_file($fileTmpPath, $destPath)) {
@@ -70,11 +74,11 @@ try {
     $stmt_demande = $pdo->prepare("UPDATE demandes_proforma SET statut = 'Validé' WHERE id = :demande_id");
     $stmt_demande->execute([':demande_id' => $demande_id]);
 
-    // 5. Créer le nouveau marché
-    $marche_id = 'M' . date('Ymd') . strtoupper(substr(uniqid(), 7, 6));
+    // 5. Créer le nouveau marché (On utilise le $marche_id généré plus haut)
+    // On précise que c'est une procédure de "Demande de Proforma"
     $stmt_marche = $pdo->prepare(
-        "INSERT INTO marches (id, titre, fournisseur, montant, date_debut, statut, besoin_id) 
-         VALUES (:id, :titre, :fournisseur, :montant, CURDATE(), 'En cours', :besoin_id)"
+        "INSERT INTO marches (id, titre, fournisseur, montant, date_debut, statut, besoin_id, type_procedure) 
+         VALUES (:id, :titre, :fournisseur, :montant, CURDATE(), 'En cours', :besoin_id, 'Demande de Proforma')"
     );
     $stmt_marche->execute([
         ':id' => $marche_id,
@@ -84,11 +88,11 @@ try {
         ':besoin_id' => $info['besoin_id']
     ]);
     
-    // 6. Enregistrer le document PV dans la nouvelle table
+    // 6. Enregistrer le document PV dans la table des documents
     $doc_id = 'DOC_' . time();
     $stmt_pv = $pdo->prepare(
-        "INSERT INTO documents_commande (id, marche_id, type_document, date_document, fichier_joint)
-         VALUES (:id, :marche_id, 'PV', CURDATE(), :fichier)"
+        "INSERT INTO documents_commande (id, marche_id, type_document, date_document, fichier_joint, statut)
+         VALUES (:id, :marche_id, 'PV', CURDATE(), :fichier, 'Validé')"
     );
     $stmt_pv->execute([
         ':id' => $doc_id,
@@ -103,12 +107,13 @@ try {
 
     // Si tout s'est bien passé, on valide la transaction
     $pdo->commit();
-    $_SESSION['success'] = "L'offre de " . htmlspecialchars($info['fournisseur']) . " a été validée et le marché a été créé avec succès.";
+    $_SESSION['success'] = "L'offre de " . htmlspecialchars($info['fournisseur']) . " a été validée et le marché <strong>" . $marche_id . "</strong> a été créé avec succès.";
 
 } catch (Exception $e) {
     // En cas d'erreur, on annule tout
     $pdo->rollBack();
-    $_SESSION['error'] = "Une erreur est survenue : " . $e->getMessage();
+    // Optionnel : On pourrait supprimer le fichier PV qui vient d'être uploadé si la DB échoue, mais c'est un cas rare.
+    $_SESSION['error'] = "Une erreur est survenue lors de la création du marché : " . $e->getMessage();
 }
 
 // Rediriger l'utilisateur vers la page de gestion des réponses

@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['role']) !== 'logistici
 
 $id = $_GET['id'] ?? null;
 if (!$id) {
-    header('Location: conventions_dashboard.php');
+    header('Location: convention_dashboard.php');
     exit();
 }
 
@@ -21,7 +21,7 @@ $convention = $stmt->fetch();
 
 // On empêche l'accès si la convention n'existe pas ou est déjà terminée
 if (!$convention || $convention['statut'] === 'Terminé') {
-    header('Location: conventions_dashboard.php');
+    header('Location: convention_dashboard.php');
     exit();
 }
 
@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Redirection avec un message de succès
         $_SESSION['success'] = "La convention a été clôturée avec succès.";
-        header('Location: conventions_dashboard.php');
+        header('Location: convention_dashboard.php');
         exit();
     } catch (PDOException $e) {
         $erreur = "Erreur lors de la clôture : " . $e->getMessage();

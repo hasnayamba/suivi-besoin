@@ -2,18 +2,24 @@
 session_start();
 include 'db_connect.php';
 
-// --- GESTION DE L'UTILISATEUR ET DES ACCÈS ---
+// --- SÉCURITÉ ---
 if (!isset($_SESSION['user_id']) || strtolower($_SESSION['role']) !== 'logisticien') {
     header('Location: login.php');
     exit();
 }
 
-// --- LOGIQUE POUR LES NOTIFICATIONS ---
 $utilisateur_id = $_SESSION['user_id'];
+$utilisateur_nom = $_SESSION['user_nom'] ?? 'Logisticien';
+$utilisateur_email = $_SESSION['user_email'] ?? 'email@example.com';
+
+// --- LOGIQUE INTELLIGENTE POUR LES NOTIFICATIONS ---
 $notifications = [];
 $unread_count = 0;
 try {
-    $stmt_notif = $pdo->prepare("SELECT * FROM notifications WHERE utilisateur_id = ? ORDER BY date_creation DESC LIMIT 5");
+    $stmt_notif = $pdo->prepare("SELECT * FROM notifications 
+                                 WHERE utilisateur_id = ? 
+                                 AND (lue = 0 OR date_lecture > DATE_SUB(NOW(), INTERVAL 1 DAY)) 
+                                 ORDER BY date_creation DESC LIMIT 15");
     $stmt_notif->execute([$utilisateur_id]);
     $notifications = $stmt_notif->fetchAll();
 
@@ -24,11 +30,7 @@ try {
     error_log("Erreur de notification: " . $e->getMessage());
 }
 
-// --- RÉCUPÉRATION DES DONNÉES UTILISATEUR ---
-$utilisateur_nom = $_SESSION['user_nom'] ?? 'Logisticien';
-$utilisateur_email = $_SESSION['user_email'] ?? 'email@example.com';
-
-// --- FONCTIONS POUR LES DONNÉES DU DASHBOARD ---
+// --- FONCTIONS DASHBOARD ---
 function get_dashboard_metrics($pdo) {
     $metrics = [
         'besoins_en_attente' => 0,
@@ -53,14 +55,32 @@ function get_dashboard_metrics($pdo) {
         $stmt_annee->execute();
         $metrics['montant_approuve_annee'] = $stmt_annee->fetchColumn() ?? 0;
 
-    } catch (PDOException $e) { /* Gérer l'erreur si besoin */ }
+    } catch (PDOException $e) { }
     return $metrics;
 }
 
-function get_actions_requises($pdo) {
+// --- PAGINATION ACTIONS REQUISES ---
+$items_per_page = 5; 
+$page_action = isset($_GET['page_action']) ? max(1, (int)$_GET['page_action']) : 1;
+$offset_action = ($page_action - 1) * $items_per_page;
+
+// MISE À JOUR : Ajout de la jointure pour récupérer la directive du DP
+function get_actions_requises($pdo, $limit, $offset) {
     try {
-        return $pdo->query("SELECT id, titre, date_soumission FROM besoins WHERE statut = 'En attente de validation' ORDER BY date_soumission DESC LIMIT 5")->fetchAll();
+        $sql = "SELECT b.id, b.titre, b.date_soumission,
+                       (SELECT commentaire FROM commentaires_direction c WHERE c.dossier_id = b.id ORDER BY c.date_commentaire DESC LIMIT 1) as directive_dp
+                FROM besoins b 
+                WHERE b.statut = 'En attente de validation' 
+                ORDER BY b.date_soumission DESC 
+                LIMIT $limit OFFSET $offset";
+        return $pdo->query($sql)->fetchAll();
     } catch (PDOException $e) { return []; }
+}
+
+function count_actions_requises($pdo) {
+    try {
+        return $pdo->query("SELECT COUNT(*) FROM besoins WHERE statut = 'En attente de validation'")->fetchColumn();
+    } catch (PDOException $e) { return 0; }
 }
 
 function get_marches_recents($pdo) {
@@ -69,9 +89,11 @@ function get_marches_recents($pdo) {
     } catch (PDOException $e) { return []; }
 }
 
-// --- Exécution des fonctions ---
+// --- EXÉCUTION ---
 $metrics = get_dashboard_metrics($pdo);
-$actions_requises = get_actions_requises($pdo);
+$actions_requises = get_actions_requises($pdo, $items_per_page, $offset_action);
+$total_actions = count_actions_requises($pdo);
+$total_pages_actions = ceil($total_actions / $items_per_page);
 $marches_recents = get_marches_recents($pdo);
 ?>
 <!DOCTYPE html>
@@ -82,38 +104,52 @@ $marches_recents = get_marches_recents($pdo);
     <title>Tableau de Bord - Logisticien</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .notification-dropdown { width: 320px; max-height: 400px; overflow-y: auto; }
+        .notification-item { padding: 0.75rem 1rem; border-bottom: 1px solid #f0f0f0; transition: background-color 0.2s ease; white-space: normal; }
+        .notification-item:hover { background-color: #f8f9fa; }
+        .notification-item.unread { background-color: rgba(13, 110, 253, 0.08); border-left: 3px solid #0d6efd; }
+        .notification-item.unread .message-text { font-weight: 700; color: #000; }
+        .notification-item .message-text { color: #555; }
+    </style>
 </head>
 <body class="bg-light">
 
 <div class="d-flex vh-100">
-    <?php include 'header.php';  ?>
+    <?php include 'header.php'; ?>
 
-    <div class="flex-fill d-flex flex-column main-content">
+    <div class="flex-fill d-flex flex-column main-content overflow-auto">
         <header class="bg-white border-bottom px-4 py-3">
             <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="mb-1">Tableau de Bord</h2>
-                    <p class="text-muted mb-0 small">Vue d'ensemble et actions rapides</p>
+                
+                <div class="d-flex align-items-center">
+                    <img src="votre_logo.png" alt="Logo" height="45" class="me-3" onerror="this.style.display='none'"> 
+                    <div>
+                        <h2 class="mb-1 fw-bold text-primary">Tableau de Bord</h2>
+                        <p class="text-muted mb-0 small">Vue d'ensemble et actions rapides</p>
+                    </div>
                 </div>
                 
                 <div class="d-flex align-items-center gap-3">
                     <div class="dropdown">
-                        <button class="btn btn-light position-relative" type="button" data-bs-toggle="dropdown" id="notifDropdown">
+                        <button class="btn btn-light position-relative border" type="button" data-bs-toggle="dropdown" id="notifDropdown">
                             <i class="bi bi-bell"></i>
                             <?php if ($unread_count > 0): ?>
-                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"><?= $unread_count ?></span>
+                                <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"><?= $unread_count ?></span>
                             <?php endif; ?>
                         </button>
-                        <ul class="dropdown-menu dropdown-menu-end" style="width: 320px;" aria-labelledby="notifDropdown">
-                            <li class="dropdown-header">Notifications</li>
+                        <ul class="dropdown-menu dropdown-menu-end notification-dropdown shadow" aria-labelledby="notifDropdown">
+                            <li class="dropdown-header fw-bold text-dark">Notifications récentes</li>
                             <li><hr class="dropdown-divider"></li>
                             <?php if (empty($notifications)): ?>
-                                <li class="px-3 py-2 text-muted small">Aucune notification</li>
+                                <li class="px-3 py-2 text-muted small text-center">Aucune notification</li>
                             <?php else: foreach ($notifications as $notif): ?>
-                                <li class="px-3 py-2 <?= $notif['lue'] ? 'text-muted' : 'bg-light fw-bold' ?>">
-                                    <a href="<?= htmlspecialchars($notif['lien'] ?? '#') ?>" class="text-decoration-none text-dark">
-                                        <div class="small"><?= htmlspecialchars($notif['message']) ?></div>
-                                        <div class="small text-muted fst-italic"><?= date('d/m/Y H:i', strtotime($notif['date_creation'])) ?></div>
+                                <li>
+                                    <a href="<?= htmlspecialchars($notif['lien'] ?? '#') ?>" class="dropdown-item notification-item <?= $notif['lue'] ? '' : 'unread' ?>">
+                                        <div class="message-text small"><?= htmlspecialchars($notif['message']) ?></div>
+                                        <div class="small text-primary mt-1" style="font-size: 0.75rem;">
+                                            <i class="bi bi-clock me-1"></i><?= date('d/m/Y H:i', strtotime($notif['date_creation'])) ?>
+                                        </div>
                                     </a>
                                 </li>
                             <?php endforeach; endif; ?>
@@ -121,82 +157,114 @@ $marches_recents = get_marches_recents($pdo);
                     </div>
                     
                     <div class="dropdown">
-                        <button class="btn btn-light d-flex align-items-center" type="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle me-2"></i><span><?= htmlspecialchars($utilisateur_nom) ?></span>
+                        <button class="btn btn-light d-flex align-items-center border" type="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle me-2 text-primary"></i><span class="fw-bold"><?= htmlspecialchars($utilisateur_nom) ?></span>
                         </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
+                        <ul class="dropdown-menu dropdown-menu-end shadow">
                             <li class="px-3 py-2">
-                                <div class="fw-medium"><?= htmlspecialchars($utilisateur_nom) ?></div>
+                                <div class="fw-bold"><?= htmlspecialchars($utilisateur_nom) ?></div>
                                 <div class="small text-muted"><?= htmlspecialchars($utilisateur_email) ?></div>
                             </li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="deconnexion.php">Déconnexion</a></li>
+                            <li><a class="dropdown-item text-danger" href="deconnexion.php"><i class="bi bi-box-arrow-right me-2"></i>Déconnexion</a></li>
                         </ul>
                     </div>
                 </div>
             </div>
         </header>
 
-        <main class="flex-fill overflow-auto p-4">
+        <main class="p-4">
             <div class="row g-4 mb-4">
-                <div class="col-md-4"><div class="card text-center p-3 h-100"><h6 class="text-muted">Besoins à traiter</h6><h3 class="mb-0"><?= $metrics['besoins_en_attente'] ?></h3></div></div>
-                <div class="col-md-4"><div class="card text-center p-3 h-100"><h6 class="text-muted">Proformas en cours</h6><h3 class="mb-0"><?= $metrics['demandes_proforma_en_cours'] ?></h3></div></div>
-                <div class="col-md-4"><div class="card text-center p-3 h-100"><h6 class="text-muted">Marchés en cours</h6><h3 class="mb-0"><?= $metrics['marches_en_cours_count'] ?></h3></div></div>
+                <div class="col-md-4"><div class="card text-center p-3 h-100 shadow-sm border-0"><h6 class="text-muted text-uppercase small fw-bold">Besoins à traiter</h6><h3 class="mb-0 text-primary fw-bold"><?= $metrics['besoins_en_attente'] ?></h3></div></div>
+                <div class="col-md-4"><div class="card text-center p-3 h-100 shadow-sm border-0"><h6 class="text-muted text-uppercase small fw-bold">Proformas en cours</h6><h3 class="mb-0 text-warning fw-bold"><?= $metrics['demandes_proforma_en_cours'] ?></h3></div></div>
+                <div class="col-md-4"><div class="card text-center p-3 h-100 shadow-sm border-0"><h6 class="text-muted text-uppercase small fw-bold">Marchés en cours</h6><h3 class="mb-0 text-success fw-bold"><?= $metrics['marches_en_cours_count'] ?></h3></div></div>
             </div>
 
             <div class="row g-4 mb-4">
-                <div class="col-md-4">
-                    <div class="card text-center p-3 h-100 bg-info text-white">
-                        <h6 class="text-white-50">Montant Marchés en Cours</h6>
-                        <h3 class="mb-0"><?= number_format($metrics['montant_marches_en_cours'], 0, ',', ' ') ?> cfa</h3>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card text-center p-3 h-100 bg-success text-white">
-                        <h6 class="text-white-50">Approuvé (ce mois-ci)</h6>
-                        <h3 class="mb-0"><?= number_format($metrics['montant_approuve_mois'], 0, ',', ' ') ?> cfa</h3>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card text-center p-3 h-100 bg-dark text-white">
-                        <h6 class="text-white-50">Approuvé (cette année)</h6>
-                        <h3 class="mb-0"><?= number_format($metrics['montant_approuve_annee'], 0, ',', ' ') ?> cfa</h3>
-                    </div>
-                </div>
+                <div class="col-md-4"><div class="card text-center p-3 h-100 bg-primary text-white border-0 shadow-sm"><h6 class="text-white-50 text-uppercase small fw-bold">Montant Marchés (En cours)</h6><h3 class="mb-0"><?= number_format($metrics['montant_marches_en_cours'], 0, ',', ' ') ?> CFA</h3></div></div>
+                <div class="col-md-4"><div class="card text-center p-3 h-100 bg-success text-white border-0 shadow-sm"><h6 class="text-white-50 text-uppercase small fw-bold">Approuvé (Ce mois)</h6><h3 class="mb-0"><?= number_format($metrics['montant_approuve_mois'], 0, ',', ' ') ?> CFA</h3></div></div>
+                <div class="col-md-4"><div class="card text-center p-3 h-100 bg-dark text-white border-0 shadow-sm"><h6 class="text-white-50 text-uppercase small fw-bold">Approuvé (Cette année)</h6><h3 class="mb-0"><?= number_format($metrics['montant_approuve_annee'], 0, ',', ' ') ?> CFA</h3></div></div>
             </div>
 
-            <div class="row">
+            <div class="row g-4">
                 <div class="col-lg-6">
-                    <div class="card">
-                        <div class="card-header"><h5 class="card-title mb-0"><i class="bi bi-exclamation-triangle me-2 text-danger"></i>Actions Requises</h5></div>
+                    <div class="card shadow-sm border-0 h-100">
+                        <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0 fw-bold text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Actions Requises</h5>
+                            <?php if ($total_actions > 0): ?>
+                                <span class="badge bg-danger rounded-pill"><?= $total_actions ?></span>
+                            <?php endif; ?>
+                        </div>
                         <ul class="list-group list-group-flush">
                             <?php if (empty($actions_requises)): ?>
-                                <li class="list-group-item text-muted">Aucun besoin en attente de traitement.</li>
+                                <li class="list-group-item text-muted text-center py-4">Aucun besoin en attente de traitement.</li>
                             <?php else: foreach ($actions_requises as $action): ?>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <a href="view_besoin.php?id=<?= htmlspecialchars($action['id']) ?>"><?= htmlspecialchars($action['titre']) ?></a>
-                                        <small class="d-block text-muted">Soumis le <?= date('d/m/Y', strtotime($action['date_soumission'])) ?></small>
+                                
+                                <li class="list-group-item flex-column align-items-start py-3">
+                                    <div class="d-flex w-100 justify-content-between align-items-center">
+                                        <div>
+                                            <div class="fw-bold text-dark"><?= htmlspecialchars($action['titre']) ?></div>
+                                            <small class="d-block text-muted">Soumis le <?= date('d/m/Y', strtotime($action['date_soumission'])) ?></small>
+                                        </div>
+                                        <a href="view_besoin.php?id=<?= htmlspecialchars($action['id']) ?>" class="btn btn-sm btn-primary fw-bold">Traiter</a>
                                     </div>
-                                    <a href="view_besoin.php?id=<?= htmlspecialchars($action['id']) ?>" class="btn btn-sm btn-outline-primary">Traiter</a>
+                                    
+                                    <?php if (!empty($action['directive_dp'])): ?>
+                                        <div class="alert alert-warning py-2 px-3 small mt-2 mb-0 border-warning border-start border-4 shadow-sm">
+                                            <i class="bi bi-exclamation-triangle-fill text-warning me-2 fs-6"></i>
+                                            <strong class="text-dark">Instruction de la Direction :</strong> 
+                                            <span class="text-dark"><?= htmlspecialchars($action['directive_dp']) ?></span>
+                                        </div>
+                                    <?php endif; ?>
+
                                 </li>
+
                             <?php endforeach; endif; ?>
                         </ul>
+                        
+                        <?php if ($total_pages_actions > 1): ?>
+                        <div class="card-footer bg-white border-0 py-3">
+                            <nav aria-label="Page navigation">
+                                <ul class="pagination pagination-sm justify-content-center mb-0">
+                                    <li class="page-item <?= ($page_action <= 1) ? 'disabled' : '' ?>">
+                                        <a class="page-link border-0 text-dark" href="?page_action=<?= $page_action - 1 ?>" aria-label="Précédent">
+                                            <i class="bi bi-chevron-left"></i>
+                                        </a>
+                                    </li>
+                                    
+                                    <li class="page-item disabled">
+                                        <span class="page-link border-0 text-muted bg-transparent">
+                                            Page <?= $page_action ?> / <?= $total_pages_actions ?>
+                                        </span>
+                                    </li>
+
+                                    <li class="page-item <?= ($page_action >= $total_pages_actions) ? 'disabled' : '' ?>">
+                                        <a class="page-link border-0 text-dark" href="?page_action=<?= $page_action + 1 ?>" aria-label="Suivant">
+                                            <i class="bi bi-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
+                
                 <div class="col-lg-6">
-                     <div class="card">
-                        <div class="card-header"><h5 class="card-title mb-0"><i class="bi bi-briefcase me-2 text-success"></i>Marchés Récents</h5></div>
+                     <div class="card shadow-sm border-0 h-100">
+                        <div class="card-header bg-white border-0 pt-3">
+                            <h5 class="card-title mb-0 fw-bold text-success"><i class="bi bi-briefcase-fill me-2"></i>Marchés Récents</h5>
+                        </div>
                         <ul class="list-group list-group-flush">
                            <?php if (empty($marches_recents)): ?>
-                                <li class="list-group-item text-muted">Aucun marché créé récemment.</li>
+                                <li class="list-group-item text-muted text-center py-4">Aucun marché récent.</li>
                             <?php else: foreach ($marches_recents as $marche): ?>
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
-                                        <a href="gerer_marche.php?id=<?= htmlspecialchars($marche['id']) ?>"><?= htmlspecialchars($marche['titre']) ?></a>
-                                        <small class="d-block text-muted">Fournisseur: <?= htmlspecialchars($marche['fournisseur']) ?></small>
+                                        <div class="fw-bold text-dark"><?= htmlspecialchars($marche['titre']) ?></div>
+                                        <small class="d-block text-muted"><i class="bi bi-shop me-1"></i><?= htmlspecialchars($marche['fournisseur']) ?></small>
                                     </div>
-                                    <a href="gerer_marche.php?id=<?= htmlspecialchars($marche['id']) ?>" class="btn btn-sm btn-outline-primary">Gérer</a>
+                                    <a href="gerer_marche.php?id=<?= htmlspecialchars($marche['id']) ?>" class="btn btn-sm btn-outline-secondary">Gérer</a>
                                 </li>
                             <?php endforeach; endif; ?>
                         </ul>
@@ -209,54 +277,54 @@ $marches_recents = get_marches_recents($pdo);
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const notifDropdown = document.getElementById('notifDropdown');
-    if (notifDropdown) {
-        notifDropdown.addEventListener('show.bs.dropdown', function () {
-            const unreadBadge = notifDropdown.querySelector('.badge');
-            if (unreadBadge) {
-                fetch('marquer_notifications_lues.php', { method: 'POST' })
-                .then(response => {
-                    if (response.ok) {
-                        unreadBadge.remove();
-                        document.querySelectorAll('.dropdown-menu .bg-light').forEach(item => {
-                            item.classList.remove('bg-light', 'fw-bold');
-                            item.classList.add('text-muted');
-                        });
-                    }
-                })
-                .catch(error => console.error('Erreur:', error));
-            }
-        });
+    // --- GESTION NOTIFICATIONS INTELLIGENTE ---
+    function markNotificationsRead() {
+        const badge = document.getElementById('notifBadge');
+        if (badge) {
+            fetch('marquer_notifications_lues.php', { method: 'POST' })
+            .then(res => {
+                if(res.ok) {
+                    badge.remove();
+                    document.querySelectorAll('.notification-item.unread').forEach(item => {
+                        item.classList.remove('unread');
+                    });
+                }
+            })
+            .catch(err => console.error(err));
+        }
     }
 
     function checkForUpdates() {
         fetch('check_notifications.php')
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
-                const notifDropdown = document.getElementById('notifDropdown');
-                if (!notifDropdown) return;
-                let notifBadge = notifDropdown.querySelector('.badge');
+                const notifBtn = document.getElementById('notifDropdown');
+                const existingBadge = document.getElementById('notifBadge');
+
                 if (data.unread_count > 0) {
-                    if (notifBadge) {
-                        notifBadge.textContent = data.unread_count;
-                    } else {
+                    if (existingBadge) {
+                        existingBadge.textContent = data.unread_count;
+                    } else if (notifBtn) {
                         const newBadge = document.createElement('span');
+                        newBadge.id = 'notifBadge';
                         newBadge.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger';
                         newBadge.textContent = data.unread_count;
-                        notifDropdown.appendChild(newBadge);
+                        notifBtn.appendChild(newBadge);
                     }
                 } else {
-                    if (notifBadge) {
-                        notifBadge.remove();
-                    }
+                    if (existingBadge) existingBadge.remove();
                 }
             })
-            .catch(error => console.error('Erreur de vérification:', error));
+            .catch(err => console.error(err));
     }
-    setInterval(checkForUpdates, 10000); // Vérification toutes les 10 secondes
-});
-</script>
 
+    document.addEventListener('DOMContentLoaded', function() {
+        const notifDropdown = document.getElementById('notifDropdown');
+        if (notifDropdown) {
+            notifDropdown.addEventListener('show.bs.dropdown', markNotificationsRead);
+        }
+        setInterval(checkForUpdates, 10000);
+    });
+</script>
 </body>
 </html>

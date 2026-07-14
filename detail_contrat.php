@@ -44,15 +44,18 @@ function formatDate($date) {
     return $date ? date('d/m/Y', strtotime($date)) : '-';
 }
 
-// Fonction de sécurisation des URLs de fichiers
+// Fonction de sécurisation des URLs de fichiers 
 function getSafeFileUrl($filename) {
-    if (!$filename) return null;
-    return 'uploads/' . rawurlencode(basename($filename));
+    if (empty($filename)) return null;
+    return 'uploads/' . ltrim($filename, '/');
 }
 
-// Déterminer le statut financier
+
+// Déterminer le statut financier 
 $statut_financier = match(true) {
-    $solde_restant <= 0 => ['badge' => 'bg-success', 'text' => 'Payé'],
+    $montant_ht == 0 => ['badge' => 'bg-secondary', 'text' => 'Non défini'],
+    $solde_restant <= 0 => ['badge' => 'bg-success', 'text' => 'Payé (Soldé)'],
+    $contrat['statut'] === 'Rupture de contrat' => ['badge' => 'bg-dark', 'text' => 'Paiement arrêté (Rupture)'],
     $solde_restant < ($montant_ht * 0.1) => ['badge' => 'bg-warning', 'text' => 'Solde faible'],
     default => ['badge' => 'bg-danger', 'text' => 'En cours de paiement']
 };
@@ -127,6 +130,9 @@ $statut_financier = match(true) {
             border-radius: 10px;
             background: linear-gradient(90deg, #28a745, #20c997);
             transition: width 0.3s ease;
+        }
+        .progress-bar.bg-rupture {
+            background: linear-gradient(90deg, #343a40, #6c757d) !important;
         }
         
         /* Styles spécifiques pour l'impression */
@@ -219,6 +225,10 @@ $statut_financier = match(true) {
             .main-content {
                 overflow-x: hidden;
             }
+            .d-flex.gap-2 {
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
         }
     </style>
 </head>
@@ -231,16 +241,42 @@ $statut_financier = match(true) {
 
     <div class="flex-fill d-flex flex-column main-content h-100 overflow-auto">
         <header class="bg-white border-bottom px-4 py-3 no-print">
-             <div class="d-flex justify-content-between align-items-center">
+             <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
                  <div>
-                    <h2 class="mb-1">Fiche Contrat</h2>
+                    <h2 class="mb-1 h4 fw-bold">Fiche Contrat</h2>
                     <p class="text-muted mb-0 small">Consultation des détails du contrat</p>
                  </div>
+                 
                  <div class="d-flex gap-2">
-                    <button onclick="window.print()" class="btn btn-outline-primary">
+                    <?php if($contrat['statut'] === 'En cours'): ?>
+                        <a href="modifier_contrat.php?id=<?= $contrat['id'] ?>" class="btn btn-outline-primary d-flex align-items-center">
+                            <i class="bi bi-pencil me-2"></i>Modifier
+                        </a>
+                    <?php endif; ?>
+
+                    <?php 
+                        if(!in_array($contrat['statut'], ['Cloturé', 'Rupture de contrat'])): 
+                            $dateFin = new DateTime($contrat['date_fin_prevue']);
+                            $limiteAlerte = new DateTime('+60 days');
+                            $estEligibleAction = ($contrat['statut'] === 'Expiré' || ($contrat['statut'] === 'En cours' && $dateFin <= $limiteAlerte));
+                            
+                            if($estEligibleAction): 
+                    ?>
+                        <a href="renouveler_contrat.php?id=<?= $contrat['id'] ?>" class="btn btn-outline-warning d-flex align-items-center">
+                            <i class="bi bi-arrow-repeat me-2"></i>Renouveler
+                        </a>
+                        <a href="cloturer_contrat.php?id=<?= $contrat['id'] ?>" class="btn btn-outline-danger d-flex align-items-center">
+                            <i class="bi bi-door-closed me-2"></i>Clôturer
+                        </a>
+                    <?php 
+                            endif;
+                        endif; 
+                    ?>
+
+                    <button onclick="window.print()" class="btn btn-outline-secondary d-flex align-items-center">
                         <i class="bi bi-printer me-2"></i>Imprimer
                     </button>
-                    <a href="contrat_dashboard.php" class="btn btn-secondary">
+                    <a href="contrat_dashboard.php" class="btn btn-secondary d-flex align-items-center">
                         <i class="bi bi-arrow-left me-2"></i>Retour
                     </a>
                  </div>
@@ -250,7 +286,6 @@ $statut_financier = match(true) {
         <main class="p-4 flex-fill">
             <div class="container">
                 
-                <!-- EN-TÊTE OFFICIEL POUR IMPRESSION -->
                 <div class="print-header">
                     <h1 class="text-uppercase fw-bold">FICHE CONTRAT N°<?= htmlspecialchars($contrat['num_contrat'] ?? 'N/A') ?></h1>
                     <p class="subtitle">Système de Gestion des Contrats - Généré le <?= date('d/m/Y à H:i') ?></p>
@@ -258,7 +293,6 @@ $statut_financier = match(true) {
                 
                 <div class="card bg-transparent">
                     
-                    <!-- EN-TÊTE DE LA FICHE -->
                     <div class="card-header bg-white p-4 border-bottom">
                         <div class="row align-items-center">
                             <div class="col-md-8">
@@ -266,7 +300,16 @@ $statut_financier = match(true) {
                                 <p class="text-muted mb-0"><?= htmlspecialchars($contrat['objet_contrat']) ?></p>
                             </div>
                             <div class="col-md-4 text-end">
-                                <span class="badge bg-primary fs-6 mb-2"><?= htmlspecialchars($contrat['statut']) ?></span>
+                                <?php 
+                                    $badgeClass = match($contrat['statut']) {
+                                        'Expiré' => 'bg-danger',
+                                        'Cloturé' => 'bg-secondary',
+                                        'Rupture de contrat' => 'bg-dark',
+                                        'En cours' => 'bg-success',
+                                        default => 'bg-primary'
+                                    };
+                                ?>
+                                <span class="badge <?= $badgeClass ?> fs-6 mb-2"><?= htmlspecialchars($contrat['statut']) ?></span>
                                 <br>
                                 <span class="badge <?= $statut_financier['badge'] ?> fs-6">
                                     <?= $statut_financier['text'] ?>
@@ -277,7 +320,6 @@ $statut_financier = match(true) {
                     
                     <div class="card-body p-4">
                         
-                        <!-- SECTION : Informations Générales -->
                         <div class="section-title mb-4">
                             <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i> Informations Générales</h5>
                         </div>
@@ -300,7 +342,6 @@ $statut_financier = match(true) {
                             </div>
                         </div>
 
-                        <!-- SECTION : Fournisseur -->
                         <div class="section-title mb-4">
                             <h5 class="mb-0"><i class="bi bi-person-badge me-2"></i> Fournisseur</h5>
                         </div>
@@ -319,21 +360,23 @@ $statut_financier = match(true) {
                             </div>
                         </div>
 
-                        <!-- SECTION : Finances & Durée -->
                         <div class="section-title mb-4">
                             <h5 class="mb-0"><i class="bi bi-currency-dollar me-2"></i> Finances & Durée</h5>
                         </div>
                         
-                        <!-- Barre de progression du paiement -->
                         <div class="row mb-3 no-print">
                             <div class="col-12">
                                 <div class="d-flex justify-content-between mb-1">
                                     <small>Progression du paiement</small>
                                     <small><?= $montant_ht > 0 ? round(($paiement_effectue / $montant_ht) * 100, 1) : 0 ?>%</small>
                                 </div>
-                                <div class="progress-container">
-                                    <div class="progress-bar" style="width: <?= $montant_ht > 0 ? ($paiement_effectue / $montant_ht) * 100 : 0 ?>%"></div>
-                                </div>
+                               <div class="progress-container">
+    <?php 
+        // Si le contrat est rompu, on applique la classe grise, sinon on laisse le dégradé vert par défaut
+        $progressClass = ($contrat['statut'] === 'Rupture de contrat') ? 'bg-rupture' : ''; 
+    ?>
+    <div class="progress-bar <?= $progressClass ?>" style="width: <?= $montant_ht > 0 ? ($paiement_effectue / $montant_ht) * 100 : 0 ?>%"></div>
+</div>
                             </div>
                         </div>
                         
@@ -375,7 +418,6 @@ $statut_financier = match(true) {
                             </div>
                         </div>
 
-                        <!-- SECTION : Détails & Avenants -->
                         <div class="section-title mb-4">
                             <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i> Détails & Avenants</h5>
                         </div>
@@ -404,9 +446,17 @@ $statut_financier = match(true) {
                                     <?= nl2br(htmlspecialchars($contrat['observations'] ?? 'Aucune observation')) ?>
                                 </div>
                             </div>
+
+                            <?php if(!empty($contrat['motif_cloture'])): ?>
+                            <div class="col-md-12 mt-3">
+                                <div class="label-detail text-danger"><i class="bi bi-exclamation-octagon-fill me-1"></i> Motif de Rupture du Contrat</div>
+                                <div class="value-detail border border-danger rounded p-3 bg-white text-danger fw-bold shadow-sm">
+                                    <?= nl2br(htmlspecialchars($contrat['motif_cloture'])) ?>
+                                </div>
+                            </div>
+                            <?php endif; ?>
                         </div>
                         
-                        <!-- SECTION : Documents Joints -->
                          <div class="section-title mb-4 mt-4">
                             <h5 class="mb-0"><i class="bi bi-paperclip me-2"></i> Documents Joints</h5>
                         </div>
@@ -417,7 +467,7 @@ $statut_financier = match(true) {
                                     $fileUrl = getSafeFileUrl($contrat['fichier_contrat']);
                                 ?>
                                     <div class="value-detail">
-                                        <a href="<?= $fileUrl ?>" class="btn btn-sm btn-outline-primary me-2 no-print" download>
+                                        <a href="<?= htmlspecialchars($fileUrl) ?>" class="btn btn-sm btn-outline-primary me-2 no-print" download>
                                             <i class="bi bi-download me-1"></i> Télécharger
                                         </a>
                                         <span class="text-success fw-bold">
@@ -439,7 +489,7 @@ $statut_financier = match(true) {
                                     $fileUrl = getSafeFileUrl($contrat['fichier_avenant']);
                                 ?>
                                     <div class="value-detail">
-                                        <a href="<?= $fileUrl ?>" class="btn btn-sm btn-outline-primary me-2 no-print" download>
+                                        <a href="<?= htmlspecialchars($fileUrl) ?>" class="btn btn-sm btn-outline-primary me-2 no-print" download>
                                             <i class="bi bi-download me-1"></i> Télécharger
                                         </a>
                                         <span class="text-success fw-bold">
@@ -474,7 +524,6 @@ $statut_financier = match(true) {
 <script>
 // Script pour améliorer l'impression
 document.addEventListener('DOMContentLoaded', function() {
-    // Optimisation avant impression
     window.addEventListener('beforeprint', function() {
         document.body.classList.add('printing');
     });

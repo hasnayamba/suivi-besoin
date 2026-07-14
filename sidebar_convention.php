@@ -3,7 +3,7 @@ $currentPage = basename($_SERVER['SCRIPT_NAME']);
 ?>
 <nav class="sidebar bg-white border-end" style="width: 260px;">
     <div class="p-4 border-bottom">
-        <h5 class="mb-1">Gestion Conventions</h5>
+       <img src="logo.png" alt="Swisscontact" style="height: 28px; width: auto; object-fit: contain;">
     </div>
     <div class="p-3">
         <ul class="nav nav-pills flex-column">
