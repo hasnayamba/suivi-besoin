@@ -1,18 +1,18 @@
 <?php
-die("JE PASSE BIEN PAR DB_CONNECT.PHP");
 
 $dbHost = getenv('DB_HOST');
 $dbName = getenv('DB_NAME');
 $dbUser = getenv('DB_USER');
 $dbPass = getenv('DB_PASS');
 
-$dsn = "mysql:host={$dbHost};port=3306;dbname={$dbName};charset=utf8mb4";
-
 echo "<pre>";
-var_dump($dbHost);
-var_dump($dbName);
-var_dump($dbUser);
+echo "HOST : "; var_dump($dbHost);
+echo "DB   : "; var_dump($dbName);
+echo "USER : "; var_dump($dbUser);
+echo "PASS : "; var_dump($dbPass);
 echo "</pre>";
+
+$dsn = "mysql:host={$dbHost};port=3306;dbname={$dbName};charset=utf8mb4";
 
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -25,7 +25,11 @@ $options = [
 
 try {
     $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
-    echo "Connexion OK";
+    echo "<h2 style='color:green'>Connexion OK</h2>";
 } catch (PDOException $e) {
+    echo "<h2 style='color:red'>Erreur PDO :</h2>";
+    echo "<pre>";
+    print_r($e->errorInfo);
+    echo "</pre>";
     die($e->getMessage());
 }
