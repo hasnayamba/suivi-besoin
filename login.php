@@ -14,7 +14,11 @@ if (isset($_SESSION['user_id'])) {
         } elseif (strtolower($_SESSION['role']) === 'finance') {
             header('Location: finance_dashboard.php');
             exit;
-        } else {
+        } elseif (strtolower($_SESSION['role']) === 'administration') {
+            header('Location: admin_dashboard.php');
+            exit;
+        }
+        else {
             header('Location: chef_projet.php');
             exit;
         }
